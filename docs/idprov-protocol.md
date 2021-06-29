@@ -4,46 +4,73 @@ The IDProv protocol provides a mechanism for IoT device provisioning for machine
 
 ## Status
 
-Functional. The service provisions signed certificates to IoT devices when providing a correct out-of-band secret. Certificates can also be provided by administrators or plugins.
+Draft. This standard is still under development. 
 
+A reference implementation in goland is provided by the [idprov-go](https://github.com/wostzone/idprov-go) project. This implementation is used to further test and validate that the protocol meets the intended use-cases.
 
 ## Overview
 
-Aspects of the protocol:
-* Provisioning of IoT devices with CA signed certificates. The issued certificate is intended for authentication of the IoT device with services.
-* Use of TLS for secure communication. TLS is proven to be secure and many resources are available for client side implementation.
-* OOB. Support for out of band verification. OOB provisioning is an optional way to raise the level of trust between device and provisioning service and remove the leap of faith.
+Aspects of the standard:
+* Discovery of the provisioning server.
+* Provisioning of IoT devices with CA signed certificates.
+* The issued certificate is intended for authentication of the IoT device with IoT service providers.
+* HTTP over TLS is used to for communication. TLS is proven to be secure and many resources are available for client side implementation.
+* Out of band verification. OOB provisioning is an optional way to raise the level of trust between device and provisioning service and remove the leap of faith.
 * Support for bulk provisioning of OOB secrets.
 * Simple. Only four JSON encoded messages in the provisioning protocol.
 
 Out of scope:
-* Discovery of the provisioning server. Discovery is a separate concern. A DNS-SD discovery plugin and client library is available for automated LAN based discovery. 
 * Bandwidth optimization. Provisioning messages are few and far in between and bandwidth is therefore not a consideration. The additional complexity is not worth it.
 * Memory optimization. While memory usage is an important consideration, the protocol uses standard TLS and certificates management similar to what the message communication channel uses. No special memory intensive tasks are used.
 * Performance optimization. Similar to the previous points, there is not sufficient reason to make things more complex by optimizing for performance.
 
-## Protocol Steps
+## Process Steps
 
-The process follows the following steps:
-1. Client discovers the Hub/Server address. This can be done through various means such as DNS-SD and manual configuration. This step preceeds the provisioning using this protocol.
-2. Client obtains server directory and certificates. The actual provisioning can take place from a different server than that of the provider of the directory.
-3. Client issues the provisioning request providing its device ID, OOB information and its public key in PEM format.
+The provisioning process follows the following steps:
+1. Client discovers the Hub/Server address. This can be done through various means such as DNS-SD and manual configuration.
+2. Client obtains server directory and certificates. 
+3. Client issues the provisioning request providing its device ID, OOB information and its public key.
 4. Server validates the client request using identity and OOB information. 
    * If this is a new request, the OOB information must match. A new certificate is generated and returned along with the certificate chain. 
    * If no OOB confirmation has been received then the status 'waiting is returned' and the client will have to try again at a later time.
    * If this is a certificate refresh, mutual authentication using the old certificate is required and no OOB information is needed. A new certificate will be issued immediately.
 5. The client should request a new certificate before the existing certificate expires. 
    * Renewal requests are made using mutual authentication using the existing certificate and do not require an OOB secret.
-   * If the renewal grace period has expired, the request follows the same process as a new request and must include an OOB secret and be confirmed by administrator.
 
 
 ## Protocol Detail
 
-All communication between IoT client and IDProv server require a TLS connection. The client is expected to require server authentication for all except the 'directory' call. See 'leap of faith' in the next section.
+All communication between IoT client and IDProv server require a TLS connection. The client is expected to require server authentication for all except the 'directory' call. 
 
-### Client Get Provisioning Directory
+### Discovery
 
-The first action a client takes after discovering the provisioning server is to request the server directory that contains endpoint, certificate and version information. 
+Various discovery methods can be employed. 
+
+DNS-SD: 
+The provisioning server publishes a DNS-SD service record on the local network. Clients on the same subnet can receive this record and determine how to connect to the server.
+
+Included are:
+* service name is "idprov"
+* service type is "_idprov._tcp"
+* IP address of the server
+* TXT record included with the path to the 'get directory' endpoint: TXT: "path=/idprov/directory"
+
+NFC: 
+This method is under investigation.
+Supporting devices contain an NFC receiver that receive the provisioning server address and CA certificate.
+
+Bluetooth:
+This method is under investigation.
+Supporting devices pair with the server when the pairing button is pressed. When a connection is established the provisioning server address is received. This can be extended to a full provisioning step.
+
+Wifi:
+This method is under investigation.
+Supporting devices connect to Wifi using the push button setup. The access point includes information on the server record in its DHCP record or other means.
+
+
+### Get Provisioning Directory
+
+The first action a client takes after discovering the provisioning server is to request the server directory that contains endpoint, CA certificate and version information. 
 
 If the client does not yet have the server and CA certificates, it has to allow the request to take place with insecureSkipVerify and verify the provided certificate.
 
@@ -65,6 +92,8 @@ If the client does not yet have the server and CA certificates, it has to allow 
 At this stage the client takes a leap of faith that the server CA certificate is valid. The client MUST use the provided CA and server certificate with the TLS client for any further requests to the provided endpoints.
 
 The path '/idprov/directory' is the default. A discovery service is allowed to advertise a different path. The paths of the directory endpoint MUST follow the listed endpoints.
+
+The default port is 43776 (IDPro)
 
 ### Device Sends Provisioning Requests
 

@@ -87,7 +87,6 @@ All communication between IoT client and IDProv server require a TLS connection.
 
 The first action a client takes after discovering the provisioning server is to request the server directory that contains information for using the protocol.
 * A list of endpoints by name. directory, status, postOOB, and postProvisionRequest are required. Additional endpoints are optional as long as their names are standardized.
-* oobsHashAlg is a list of names of available algorithms to hash the OOB secret in the post provision request. The default algorithms are Argon2id, bcrypt, scrypt and PBKDF2.
 * The CA certificate of the provisioning server.
 * The protocol version. Currently "1". All 1.x versions of the protocol are backwards compatible.
 
@@ -103,13 +102,12 @@ If the client does not yet have the server and CA certificates, it has to allow 
 >    postOOB: "https://server:port/idprov/oobsecret",
 >    postProvisionRequest: "https://server:port/idprov/provreq",
 >  },
->  oobsHashAlg: [Argon2id, bcrypt, scrypt, PBKDF2],
 >  caCert: PEM,
 >  version: "1" 
 > }
 ```
 
-At this stage the client assumes that the server CA certificate is valid. The client MUST use the provided CA certificate with the TLS client for any further requests to the provided endpoints. The OOB secret hash in the provisioning step will only succeed if the server has the same OOB secret. Once that verification succeeds on both client and server, the trust is established and the client uses the information provided.
+The client MUST continue using the provided CA certificate with the TLS client for any further requests to the provided endpoints. To ensure the server providing the directory is the same as the server answering the provisioning request. The server is still untrusted until the provisioning request response signature is verified.
 
 The path '/idprov/directory' is the default. A discovery service is allowed to advertise a different path.
 
@@ -117,11 +115,11 @@ The default port is 43776 (IDPro)
 
 ### Server Receives OOB Device Secret
 
-The out-of-band secret endpoint is used to provide the server with the deviceID and a one-time secret. This endpoint requires a TLS connection with a valid admin or plugin OU certificate.
-Authorization is provided by using a valid client certificate with the OU field set to 'admin' or 'plugin'. 
+The out-of-band secret endpoint is used to provide the server with the deviceID and a one-time secret. This endpoint requires a TLS connection with a valid admin or plugin OU certificate. 
+Authorization is provided by using a valid client certificate with the OU field set to 'admin' or 'plugin'. The administrator must use a valid client and CA certificate to ensure mutual trust. 
 
 Constraints:
-* One time use. Once the secret is used in a successful provisioning request, it is removed from the server. This reduces the risk of re-use a secret that is cracked. To further increase security the device can generate a new secret each time a secret is requested. Note that a device can re-use the same secret when re-provisioning but it will need to be applied to the server again.
+* One time use. Once the secret is used in a successful provisioning request, it is removed from the server. Depending on the client capabilities it is recommended to  generate a new secret each time provisioning is attempted. A device can re-use the same secret when re-provisioning but it will need to be applied to the server again.
 * Limited life span. Secrets issued to the server have a limited life span. The default life span is 3 days. When using bulk setting of secrets during pre-provisioning, the lifespan can be enlarged to give the administrator sufficient time to provision all devices.
 
 ```http
@@ -144,13 +142,12 @@ Where:
 
 The provisioning request MUST contain the following information:
 * The deviceID of the device being provisioned. This ID MUST be unique within the service.
-* The device public key in PEM format. This is used to generate the device certificate. The corresponding private key and generated certificate are needed in mutual authentication so only the owner of the private key can use the certificate to connect to the servers.
+* The device public key in PEM format, used to generate the device certificate. 
 * The device IP address at the time of the request. Used for logging and verification.
 * The device MAC address at the time of the request. Used for logging and verification.
-* oobhash is the hash of the OOB secret. It is intended to show the server the client has the OOB secret without exposing the secret.
-* oobHashAlg contains the hashing algorithm used. Argon2id is currently recommended.
+* signature is the base64 of the HMAC function of the message and the OOB secret. This field is not needed if the client uses a valid certificate.
 
-Once the server has accepted the request and issue a certificate, the OOB secret is removed. Any further provisioning attempts will be treated as if no OOB is known. This adds a time window constraints in which provisioning is accepted for the device.
+Once the server has accepted the request and issues a certificate, the OOB secret is removed. Any further provisioning attempts will be treated as if no OOB is known. This adds a time window constraints in which provisioning is accepted for the device.
 
 ```http
 > HTTP POST https://server:port/idprov/provreq
@@ -159,8 +156,7 @@ Once the server has accepted the request and issue a certificate, the OOB secret
 >    ip: {IP address of the device at the time of the request},
 >    mac: {MAC address of the device},
 >    publicKeyPEM:  {publickey of the device},
->    oobsHash: {client hash of OOB secret},
->    oobsHashAlg: {Argon2id, bcrypt, scrypt, PBKDF2}
+>    signature: {base64(HMAC(request,oobSecret))},
 > }
 > 200 OK
 > {
@@ -169,7 +165,7 @@ Once the server has accepted the request and issue a certificate, the OOB secret
 >    retrySec: 3600,
 >    caCert: PEM,
 >    clientCert: {signature in PEM format signed by the CA},
->    oobsHash: {server hash of the OOB secret}
+>    signature: {base64(HMAC(response,oobSecret))},
 > }
 ```
 
@@ -182,27 +178,38 @@ The response:
 * retrySec - time in seconds to retry the request. In case of status Approved this is the recommended certificate renewal interval.
 * caCert The CA certificate that should be used for connections to the message bus and other services. Typically this is the same as the CA for the IDProv server although a different certificate can be used.
 * clientCert contains the client certificate signed by the CA.
-* oobsHash is the hash of the OOB secret generated by the server. Must differ from the client provided oobsHash otherwise the client assumes the server is malicious and will reject the response. The server must use the same hashing algorithm as the request but with a different salt or pepper hash.
+* signature is the base64 encoded HMAC of the response message and the OOB secret.  This field is not needed if a valid client certificate was used by the device.
+
+
+The signatures in the request and response are generated as follows (see appendix A for a code example): Base64(HMAC(message, oob-secret))
+1. Create the message with the signature field an empty string
+2. Create a HMAC of the message using the SHA256 hash of the out-of-band secret
+3. Store the base64 encoded result in the signature field
+
+The signature verification:
+1. Recreate the received message with the signature field blank
+2. Create the HMAC of the received message using the SHA256 hash of the out-of-band secret from the receiver.
+3. Base64 decode the HMAC signature of the received message
+4. Use HMAC verify to compare the two HMAC signatures. 
+
 
 
 Verifications of the request by the server:
-* The oobsHash must verify against the received out-of-band secret. It proves that the request comes from the actual device. 
+* The signature of the message must verify against the HMAC of the message using the receiver's out of band secret as described above.
 * The IP and MAC in the request matches the IP and MAC of the request sender. This can be used for logging and additional verification, for example check if only a single request is made per device.
 * Peer certificate:
   * In case of renewing an existing certificate with mutual authentication the peer certificate MUST have the same deviceID as the requested certificate AND must not be expired. The peer certificate OU MUST be 'iotdevice'. In this case no oobsHash is needed.
-  * In case of administrator or plugin requesting a certificate, the peer certificate OU MUST be 'plugin' or admin'. In this case no OOB secret hash is needed.
+  * In case of administrator or plugin requesting a certificate, the peer certificate OU MUST be 'plugin' or admin'. In this case no OOB secret is needed.
 
 Verification of the response by the client:
-* The oobsHash must verify against the OOB secret but differ from the hash in the request. If the response hash matches with the OOB secret then the server is legit.
+* The signature must verify against the response message, and the OOB secret of the sender. It verifies that the reponse has not been tampered with and the sender knows the OOB secret.
 
-The retrySec time indicates when the request must be repeated. In case the server has issued a certificate this is the recommended renewal time.
-If the server has not received the OOB secret when the request is received, the device should retry after the indicated time has elapsed. This lets the server manage its load.
-
+The retrySec time indicates when the request must be repeated. In case the server has issued a certificate this is the recommended renewal time. If the server does not have the OOB secret the device should retry after the indicated time has elapsed. This lets the server manage its load. 
 
 
-### Device Requests Provisioning Status
+### Requesting The Provisioning Status
 
-Last, clients can obtain the provisioning status and certificate of a device. 
+Last, clients can obtain the provisioning status and client certificate of a device.
 
 ```http
 > HTTP GET https://server:port/idprov/status/{deviceID}
@@ -217,4 +224,38 @@ Last, clients can obtain the provisioning status and certificate of a device.
 The term "{deviceID}" in the URL MUST be replaced by the device ID when posting to the server.
 
 
+# Appending A: Code examples
 
+## Signature verification example in golang
+
+Creating a message signature:
+```golang
+func Sign(message string, sharedSecret string) (base64Encoded string, err error) {
+	hmac256 := hmac.New(sha256.New, []byte(secret))
+	hmac256.Write([]byte(message))
+	hmacMessage := hmac256.Sum(nil)
+	base64Signature := base64.StdEncoding.EncodeToString(hmacMessage)
+	return base64Signature, nil
+}
+```
+
+
+Verifying a signature: 
+```golang
+func Verify(message string, sharedSecret string, base64Signature string) error {
+	hmacMessage, err := base64.StdEncoding.DecodeString(base64Signature)
+	if err != nil {
+		return err
+	}
+	// generate a new HMAC using our secret
+	hmac256 := hmac.New(sha256.New, []byte(secret))
+	hmac256.Write([]byte(message))
+	myHmac := hmac256.Sum(nil)
+  // HMAC must be equal if both sides use the same message and secret
+	equal := hmac.Equal(hmacMessage, myHmac)
+	if !equal {
+		return errors.New("Message verification failed. Secrets used to sign do not match.")
+	}
+	return nil
+}
+```

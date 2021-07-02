@@ -23,9 +23,10 @@ This standard focuses on provisioning over the local network only. Internet base
 Provisioned devices use their signed certificate for establishing a mutual authenticated and secured connection over SSL/TLS with a service provider. 
 
 The ['idprov-protocol'](docs/idprov-protocol.md) document describes the protocol in detail.
+A reference implementation of client and server in golang is available in ['idprov-go'](https://github.com/wostzone/idprov-go).
 
 
-# Provisioning Protocol
+# Provisioning Standard
 
 The scope of provisioning by this standard addresses:
 1. Discovery of the provisioning server by the client
@@ -34,9 +35,10 @@ The scope of provisioning by this standard addresses:
 
 ## Discovery
 
-For automated M2M provisioning the standard defines the use of DNS-SD/Zeroconf for discovering the IDProv server on the local network using the '_idprov._tcp' service type and a TXT record with the path "path=/path/to/directory" endpoint.
+For automated M2M provisioning this standard defines the use of DNS-SD/Zeroconf for discovering the IDProv server on the local network using the '_idprov._tcp' service type and a TXT record with the path "path=/path/to/directory" endpoint.
 
 The server publishes this discovery record on the local network for discovery by clients on the same network.
+Clients can obtain the IDProv information by querying the published address using the path as the endpoint.
 
 Additional methods of discovery are possible. For example using NFC to transfer the server address to the IoT device and at the same time receive the Device ID and OOB secret. These methods are currently out of scope of this standard but might be included in the future.
 
@@ -51,14 +53,13 @@ If no CA certificate is available at the time of provisioning then the shared ou
 
 ## Establising trust of the client by the server
 
-Establishing trust of the client means that the server can verify that the client is who it claims to be to allow it to publish and subscribe messages.
+Establishing trust of the client means that the server can verify that the client is who it claims to be to allow it to publish and subscribe messages. This is addressed by the use of out-of-band secrets, or in case of certificate renewal the use of a client certificate signed by the server CA.
 
-The objectives are to be secure and ease of use, with support for bulk provision.
-
+Any out of band verification method can be used that provides the server with a secret. The simplest method is using the serial# as the secret. Depending on the device capabilities, other methods to transfer a secret can be used such as NFC, QR code or Bluetooth. Fundamentally the transfer of a device ID and secret must be supported. 
 
 ## Other Protocols
 
-Several other protocols exist that can be used for M2M authentication. Most of them have the drawback that they are either not intended for M2M authentication, are more complicated, or difficult to use.
+Several other protocols exist that can be used for provisioning. Most of them have the drawback that they are either not intended for M2M authentication, are more complicated, or difficult to use. IDProv is specifically designed for very simple provisioning over the local network.
 
 Example protocols that can be used for provisioning:
 This list is not complete but will be updated as other suitable protocols are found.
@@ -71,7 +72,7 @@ Unfortunately it looks like the draft of this protocol has expired. As it is qui
 
 * EAP-TLS
 
-EAP-TLS is a certificate based mutual authentication protocol
+EAP-TLS is a certificate based mutual authentication protocol. 
 
 * LWM2M
  

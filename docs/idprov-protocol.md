@@ -99,7 +99,7 @@ If the client does not yet have the server and CA certificates, it has to allow 
 >   endpoints {
 >    directory: "https://server:port/idprov/directory",
 >    status: "https://server:port/idprov/status/{deviceID}",
->    postOOB: "https://server:port/idprov/oobsecret",
+>    postOobSecret: "https://server:port/idprov/oobSecret",
 >    postProvisionRequest: "https://server:port/idprov/provreq",
 >  },
 >  caCert: PEM,
@@ -123,7 +123,7 @@ Constraints:
 * Limited life span. Secrets issued to the server have a limited life span. The default life span is 3 days. When using bulk setting of secrets during pre-provisioning, the lifespan can be enlarged to give the administrator sufficient time to provision all devices.
 
 ```http
-> HTTP POST https://server:port/idprov/oob
+> HTTP POST https://server:port/idprov/oobsecret
 > {
 >   deviceID: {deviceID},
 >   oobSecret: {out of band one time secret},
@@ -160,7 +160,6 @@ Once the server has accepted the request and issues a certificate, the OOB secre
 > }
 > 200 OK
 > {
->    deviceID: {deviceID},
 >    status: "Approved",
 >    retrySec: 3600,
 >    caCert: PEM,
@@ -181,35 +180,43 @@ The response:
 * signature is the base64 encoded HMAC of the response message and the OOB secret.  This field is not needed if a valid client certificate was used by the device.
 
 
+The retrySec time indicates when the request must be repeated. In case the server has issued a certificate this is the recommended renewal time. If the server responds with status 'waiting' the client should retry after the indicated time has elapsed. This lets the server manage its load. 
+
+Verification methods:
+
+#### Certificate Request With Signature Verification
+
+A new provisioning request by an unauthenticated client (eg no client certificate) must contain a valid signature field created using the out of band secret.
+
 The signatures in the request and response are generated as follows (see appendix A for a code example): Base64(HMAC(message, oob-secret))
 1. Create the message with the signature field an empty string
-2. Create a HMAC of the message using the SHA256 hash of the out-of-band secret
+2. Create a HMAC of the message using the SHA256 hash of the out-of-band secret from the sender.
 3. Store the base64 encoded result in the signature field
 
 The signature verification:
 1. Recreate the received message with the signature field blank
 2. Create the HMAC of the received message using the SHA256 hash of the out-of-band secret from the receiver.
 3. Base64 decode the HMAC signature of the received message
-4. Use HMAC verify to compare the two HMAC signatures. 
+4. Use HMAC-verify to compare the two HMAC signatures. 
 
+This verification takes places twice, once by the server when receiving a request and once by the client when receiving a response. If both verifications succeed then this guarantees that both sender and receiver share the same out of band secret and the request and response messages have not been tampered with. 
 
+#### Certificate Renewal 
 
-Verifications of the request by the server:
-* The signature of the message must verify against the HMAC of the message using the receiver's out of band secret as described above.
-* The IP and MAC in the request matches the IP and MAC of the request sender. This can be used for logging and additional verification, for example check if only a single request is made per device.
-* Peer certificate:
-  * In case of renewing an existing certificate with mutual authentication the peer certificate MUST have the same deviceID as the requested certificate AND must not be expired. The peer certificate OU MUST be 'iotdevice'. In this case no oobsHash is needed.
-  * In case of administrator or plugin requesting a certificate, the peer certificate OU MUST be 'plugin' or admin'. In this case no OOB secret is needed.
+A provisioning request to renew an existing certificate will be approved without a signature. No out of band secret is needed. 
 
-Verification of the response by the client:
-* The signature must verify against the response message, and the OOB secret of the sender. It verifies that the reponse has not been tampered with and the sender knows the OOB secret.
+The client (IoT device) MUST use mutual authentication with the server using a previously issued client certificate that has not expired.
 
-The retrySec time indicates when the request must be repeated. In case the server has issued a certificate this is the recommended renewal time. If the server does not have the OOB secret the device should retry after the indicated time has elapsed. This lets the server manage its load. 
+The deviceID of the certificate MUST match the device ID of the request certificate renewal. Eg, the client can renew its own certificate.
+
+#### Certificate Request By Administrator 
+
+An administrator that uses a valid client certificate with the admin or plugin organizational unit can request a certificate for a device. No OOB secret is needed.
 
 
 ### Requesting The Provisioning Status
 
-Last, clients can obtain the provisioning status and client certificate of a device.
+Administrators can obtain the provisioning status and client certificate of a device. This requires the use of a client certificate with an admin or plugin OU.
 
 ```http
 > HTTP GET https://server:port/idprov/status/{deviceID}

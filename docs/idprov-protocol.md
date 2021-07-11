@@ -36,7 +36,7 @@ Included are:
 * service name is "idprov"
 * service type is "_idprov._tcp"
 * IP address of the server
-* TXT record included with the path to the 'get directory' endpoint: TXT: "path=/idprov/directory"
+* TXT record included with the path to the 'get directory' endpoint: TXT: "directory=/idprov/directory"
 
 2. NFC: 
 This method is under investigation.
@@ -97,13 +97,17 @@ If the client does not yet have the server and CA certificates, it has to allow 
 > 200 OK
 > {
 >   endpoints {
->    directory: "https://server:port/idprov/directory",
->    status: "https://server:port/idprov/status/{deviceID}",
->    postOobSecret: "https://server:port/idprov/oobSecret",
->    postProvisionRequest: "https://server:port/idprov/provreq",
->  },
->  caCert: PEM,
->  version: "1" 
+>     directory: "https://server:port/idprov/directory",
+>     status: "https://server:port/idprov/status/{deviceID}",
+>     postOobSecret: "https://server:port/idprov/oobSecret",
+>     postProvisionRequest: "https://server:port/idprov/provreq",
+>   },
+>   services {
+>      messageBus: "mqtts://server:port/",
+>      thingDirectory: "https://server:port/directory",
+>   },
+>   caCert: PEM,
+>   version: "1" 
 > }
 ```
 
@@ -111,7 +115,9 @@ The client MUST continue using the provided CA certificate with the TLS client f
 
 The path '/idprov/directory' is the default. A discovery service is allowed to advertise a different path.
 
-The default port is 43776 (IDPro)
+The services section list services that can be used by clients with the provided  certificates. The CA will validate the server while an issued client certificate authenticates the client. Without a client certificate a username/password authentication must be used. The names are defined in the appendix.
+
+The default port for the idprov server is 43776 (IDPro)
 
 ### Server Receives OOB Device Secret
 
@@ -266,3 +272,16 @@ func Verify(message string, sharedSecret string, base64Signature string) error {
 	return nil
 }
 ```
+
+# Appending B: TLS Services
+
+The services section in the idprov directory result list services that work with the provisioned certificates. The names are predefined as follows:
+
+!!! This section is tentative. Are there existing names for webservices like these that can be used instead? 
+
+* mqtt: MQTT service endpoint
+* mqttws: MQTT service websocket endpoint
+* wostdir: WoST directory service endpoint
+* wostportal: http server providing a web client user interface for consumers.
+* adminportal: http server providing a web client user interface for administrators
+* adminapi: http server providing REST API to adminster users and groups

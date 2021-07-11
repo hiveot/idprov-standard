@@ -64,19 +64,47 @@ Several other protocols exist that can be used for provisioning. Most of them ha
 Example protocols that can be used for provisioning:
 This list is not complete but will be updated as other suitable protocols are found.
 
-* EAP-NOOB 
+### EAP-NOOB 
 
 The [EAP-NOOB protocol](https://tools.ietf.org/html/draft-aura-eap-noob-08) defines an EAP method where the authentication is based on a user-assisted out-of-band (OOB) channel between the server and peer. Many out of band channels can be supported
 
 Unfortunately it looks like the draft of this protocol has expired. As it is quite suited for M2M authentication support might be added in the future.
 
-* EAP-TLS
+### EAP-TLS
 
 EAP-TLS is a certificate based mutual authentication protocol. 
 
-* LWM2M
+### LWM2M
  
 Light-weight M2M (LwM2M) which requires pre-provisioned credentials on the device
+
+### AWS IoT provisioning via MQTT
+
+[AWS IoT core API provide several ways to provision a device](https://docs.aws.amazon.com/iot/latest/developerguide/iot-provision.html)
+
+Method 1: Install unique certificates on the IoT device ahead of delivery
+
+Register the CA that was used to sign the device certificate with AWS IoT. The device is automatically provisioned on first use.
+
+Method 2: Install unique certificate on an IoT device after delivery using an app.
+
+Method 3: Use a shared claim certificate template to obtain a unique certificate during provisioning. 
+
+
+CreateCertificateFromCsr - the device creates a CSR and publishes it onto '$aws/certificates/create-from-csr/json|cbor'
+
+The certifciate is published on '$aws/certificates/create-from-csr/json|cbor/accepted.'
+
+Note that the IoT device has a private key that is not updated. If however it changes, a new CSR must be sent.
+
+
+### Microsoft Azure Device Provisioning Service
+
+MS [Azure IoT Hub Device Provisioning Service](https://docs.microsoft.com/en-us/azure/iot-dps/about-iot-dps) is intended for zero-touch provisioning of many devices.
+
+The method uses an enrollment list provided by the manufacturer. One method is to include a x509 certificate during manufacturing, generator using the manufacturer CA. The other is to use a unique key such as serial number or MAC address. 
+
+This results in a device enrollment list for use by the DPS.
 
 
 

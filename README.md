@@ -6,7 +6,8 @@ The protocol definition can be found here: [idprov-protocol.md](docs/idprov-prot
 
 ## Status
 
-This standard is currently a draft version. The standard is currently being validate within the WoST project, where it serves to provision 'Thing devices' with the WoST Hub.
+DEPRECATED in favor of WoT (Web Of Things) W3C standard, as implemented in the HiveOT Hub and Protocol bindings.
+This standard is no longer active. The standard is currently being validate within the WoST project, where it serves to provision 'Thing devices' with the WoST Hub.
 
 ## Audience
 
